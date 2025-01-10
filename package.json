@@ -1,0 +1,111 @@
+{
+  "name": "directory-tree-generator",
+  "displayName": "Directory Tree Generator",
+  "description": "Generate directory tree structure in text file",
+  "version": "0.0.1",
+  "publisher": "your-publisher-name",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "directory",
+    "tree",
+    "file structure",
+    "documentation",
+    "filesystem"
+  ],
+  "icon": "images/icon.png",
+  "galleryBanner": {
+    "color": "#C80000",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/directory-tree-generator.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-username/directory-tree-generator/issues"
+  },
+  "homepage": "https://github.com/your-username/directory-tree-generator/blob/main/README.md",
+  "license": "MIT",
+  "activationEvents": [
+    "onCommand:directory-tree-generator.generateTree",
+    "onCommand:directory-tree-generator.generateTreeWithConfig",
+    "onCommand:directory-tree-generator.toggleWatcher"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "directory-tree-generator.generateTree",
+        "title": "Generate Directory Tree"
+      },
+      {
+        "command": "directory-tree-generator.generateTreeWithConfig",
+        "title": "Generate Directory Tree (With Config)"
+      },
+      {
+        "command": "directory-tree-generator.toggleWatcher",
+        "title": "Toggle Auto-Update Directory Tree"
+      }
+    ],
+    "configuration": {
+      "title": "Directory Tree Generator",
+      "properties": {
+        "directoryTree.excludePatterns": {
+          "type": "array",
+          "default": [
+            "node_modules",
+            ".git",
+            "dist",
+            "build",
+            ".vscode"
+          ],
+          "description": "Patterns to exclude from the tree"
+        },
+        "directoryTree.maxDepth": {
+          "type": "number",
+          "default": -1,
+          "description": "Maximum depth of the tree (-1 for unlimited)"
+        },
+        "directoryTree.showFiles": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show files in the tree"
+        },
+        "directoryTree.showSize": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show file sizes in the tree"
+        },
+        "directoryTree.outputFilename": {
+          "type": "string",
+          "default": "directory-tree.txt",
+          "description": "Default filename for saving the tree"
+        },
+        "directoryTree.autoUpdate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically update tree when files are added or removed"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@types/node": "^16.x.x",
+    "@types/vscode": "^1.60.0",
+    "typescript": "^4.x.x",
+    "@vscode/vsce": "^2.15.0"
+  }
+}
