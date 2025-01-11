@@ -3,7 +3,7 @@
   "displayName": "Directory Tree Generator",
   "description": "Generate directory tree structure in text file",
   "version": "0.0.1",
-  "publisher": "your-publisher-name",
+  "publisher": "crysis1812",
   "engines": {
     "vscode": "^1.60.0"
   },
@@ -24,17 +24,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/directory-tree-generator.git"
+    "url": "https://github.com/bunchtrail/getDirectory"
   },
-  "bugs": {
-    "url": "https://github.com/your-username/directory-tree-generator/issues"
-  },
-  "homepage": "https://github.com/your-username/directory-tree-generator/blob/main/README.md",
   "license": "MIT",
   "activationEvents": [
-    "onCommand:directory-tree-generator.generateTree",
-    "onCommand:directory-tree-generator.generateTreeWithConfig",
-    "onCommand:directory-tree-generator.toggleWatcher"
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -105,7 +99,8 @@
   "devDependencies": {
     "@types/node": "^16.x.x",
     "@types/vscode": "^1.60.0",
-    "typescript": "^4.x.x",
-    "@vscode/vsce": "^2.15.0"
+    "@vscode/vsce": "^2.15.0",
+    "sharp": "^0.33.5",
+    "typescript": "^4.x.x"
   }
 }
