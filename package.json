@@ -1,9 +1,18 @@
 {
-  "name": "directory-tree-generator",
-  "displayName": "Directory Tree Generator",
-  "description": "Generate directory tree structure in text file",
-  "version": "0.0.1",
-  "publisher": "crysis1812",
+  "name": "vscode-directory-tree",
+  "displayName": "Directory Tree Formatter",
+  "description": "VS Code extension for advanced directory tree formatting",
+  "version": "0.1.0",
+  "publisher": "your-publisher-name",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bunchtrail/getDirectory.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bunchtrail/getDirectory/issues"
+  },
+  "homepage": "https://github.com/bunchtrail/getDirectory#readme",
+  "license": "MIT",
   "engines": {
     "vscode": "^1.60.0"
   },
@@ -14,76 +23,41 @@
     "directory",
     "tree",
     "file structure",
-    "documentation",
-    "filesystem"
+    "filesystem",
+    "explorer"
   ],
-  "icon": "images/icon.png",
-  "galleryBanner": {
-    "color": "#C80000",
-    "theme": "dark"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/bunchtrail/getDirectory"
-  },
-  "license": "MIT",
   "activationEvents": [
-    "onStartupFinished"
+    "onCommand:directoryTree.generateTree"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "directory-tree-generator.generateTree",
+        "command": "directoryTree.generateTree",
         "title": "Generate Directory Tree"
-      },
-      {
-        "command": "directory-tree-generator.generateTreeWithConfig",
-        "title": "Generate Directory Tree (With Config)"
-      },
-      {
-        "command": "directory-tree-generator.toggleWatcher",
-        "title": "Toggle Auto-Update Directory Tree"
       }
     ],
     "configuration": {
-      "title": "Directory Tree Generator",
+      "title": "Directory Tree",
       "properties": {
-        "directoryTree.excludePatterns": {
-          "type": "array",
-          "default": [
-            "node_modules",
-            ".git",
-            "dist",
-            "build",
-            ".vscode"
-          ],
-          "description": "Patterns to exclude from the tree"
-        },
-        "directoryTree.maxDepth": {
-          "type": "number",
-          "default": -1,
-          "description": "Maximum depth of the tree (-1 for unlimited)"
-        },
-        "directoryTree.showFiles": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show files in the tree"
-        },
         "directoryTree.showSize": {
           "type": "boolean",
           "default": false,
-          "description": "Show file sizes in the tree"
+          "description": "Show file sizes in tree output"
         },
-        "directoryTree.outputFilename": {
-          "type": "string",
-          "default": "directory-tree.txt",
-          "description": "Default filename for saving the tree"
-        },
-        "directoryTree.autoUpdate": {
+        "directoryTree.aiMinimalMode": {
           "type": "boolean",
           "default": false,
-          "description": "Automatically update tree when files are added or removed"
+          "description": "Use minimal mode for AI tree formatting"
+        },
+        "directoryTree.importantExtensions": {
+          "type": "array",
+          "default": [
+            ".ts",
+            ".js",
+            ".json"
+          ],
+          "description": "List of important file extensions"
         }
       }
     }
@@ -93,14 +67,16 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile",
-    "package": "vsce package",
+    "test": "node ./out/test/runTest.js",
+    "package": "vsce package --allow-missing-repository",
     "publish": "vsce publish"
   },
   "devDependencies": {
-    "@types/node": "^16.x.x",
+    "@types/mocha": "^9.0.0",
+    "@types/node": "^16.x",
     "@types/vscode": "^1.60.0",
-    "@vscode/vsce": "^2.15.0",
-    "sharp": "^0.33.5",
-    "typescript": "^4.x.x"
+    "@vscode/vsce": "^2.24.0",
+    "mocha": "^9.1.1",
+    "typescript": "^4.5.5"
   }
 }
