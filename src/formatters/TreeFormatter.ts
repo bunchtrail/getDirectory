@@ -1,138 +1,177 @@
-import * as vscode from 'vscode';
-import { TreeNode } from '../domain/interfaces/ITreeGenerator';
+import { FormatterOptions, TreeMetadata, TreeNode, TreeStats } from '../types';
 
 export class TreeFormatter {
-    // Список расширений, для которых мы хотим собирать статистику
-    private static readonly IMPORTANT_EXTENSIONS = new Set([
-        'ts', 'tsx', 'js', 'jsx', 'py', 'java', 'cs', 'go', 'rs',
-        'cpp', 'c', 'h', 'hpp', 'css', 'scss', 'html', 'json', 'yaml',
-        'yml', 'md', 'sql', 'sh', 'bash', 'ps1', 'php', 'rb'
-    ]);
+    private options: FormatterOptions;
 
-    static formatTreeForAI(node: TreeNode): string {
-        const config = vscode.workspace.getConfiguration('directoryTree');
-        const showSize = config.get<boolean>('showSize') || false;
-        const aiMinimalMode = config.get<boolean>('aiMinimalMode') || false;
-        
-        // Собираем статистику
-        const stats = this.collectStats(node);
-        
-        if (aiMinimalMode) {
-            // Минимальный режим для AI
-            const result = {
-                meta: {
-                    nodes: stats.totalNodes,
-                    files: stats.files,
-                    dirs: stats.directories,
-                    root: node.name
-                },
-                tree: this.buildMinimalTree(node)
+    constructor(options: FormatterOptions = {}) {
+        this.options = {
+            showSize: false,
+            aiMinimalMode: false,
+            importantExtensions: ['.ts', '.js', '.json'],
+            ...options
+        };
+    }
+
+    public formatTreeForAI(node: TreeNode): TreeStats {
+        if (this.options.aiMinimalMode) {
+            return {
+                metadata: this.collectMetadata(node),
+                extension_stats: {},
+                nodes: [this.buildMinimalTree(node)],
+                relationships: []
             };
-            return JSON.stringify(result, null, 2);
         }
 
-        // Полный режим
-        const { nodes, relationships } = this.flattenTree(node);
-        const result = {
-            metadata: {
-                total_nodes: stats.totalNodes,
-                total_files: stats.files,
-                total_directories: stats.directories,
-                max_depth: stats.maxDepth,
-                root: node.name,
-                show_size: showSize
-            },
-            extension_stats: stats.extensions,
-            nodes: nodes,
-            relationships: relationships
+        const stats = this.collectStats(node);
+        return {
+            metadata: this.collectMetadata(node),
+            extension_stats: stats.extensionStats,
+            nodes: [node],
+            relationships: this.buildRelationships(node)
         };
-
-        return JSON.stringify(result, null, 2);
     }
 
-    private static buildMinimalTree(node: TreeNode): any {
-        // Базовый объект
-        const result: any = {
-            name: node.name,
-            type: node.isDirectory ? "directory" : "file"
-        };
-
-        // Для схлопнутых директорий
+    public formatTreeForHuman(node: TreeNode, prefix: string = ''): string {
         if (node.isPlaceholder) {
-            if (node.children_skipped) {
-                result.children_skipped = node.children_skipped;
-                result.children = "skipped";
-            } else {
-                result.children = [{
-                    name: "...",
-                    type: "directory",
-                    children: []
-                }];
-            }
-            return result;
+            return `${prefix}... (${node.children_skipped} items skipped)`;
         }
 
-        // Добавляем дочерние элементы только для директорий с содержимым
-        if (node.children && typeof node.children !== 'string' && node.children.length > 0) {
-            result.children = node.children.map(child => this.buildMinimalTree(child));
-        }
-
-        return result;
-    }
-
-    static formatTreeForHuman(node: TreeNode, prefix: string = ''): string {
-        const config = vscode.workspace.getConfiguration('directoryTree');
-        const showSize = config.get<boolean>('showSize') || false;
-        
-        let result = '';
         const icon = node.isDirectory ? '📁' : '📄';
-        const name = node.name;
-        const size = showSize && node.size ? ` (${this.formatSize(node.size)})` : '';
+        let result = `${prefix}${icon} ${node.name}`;
         
-        // Добавляем текущий узел
-        result += `${prefix}${icon} ${name}${size}\n`;
+        if (this.options.showSize && !node.isDirectory && node.size !== undefined) {
+            result += ` (${this.formatSize(node.size)})`;
+        }
 
-        // Обрабатываем дочерние элементы
-        if (node.children && typeof node.children !== 'string' && node.children.length > 0) {
-            // Сортируем: сначала директории, потом файлы
-            const sortedChildren = [...node.children].sort((a, b) => {
-                if (a.isDirectory === b.isDirectory) {
-                    return a.name.localeCompare(b.name);
+        if (node.children && Array.isArray(node.children)) {
+            result += '\n';
+            const childPrefix = prefix + '│   ';
+            node.children.forEach((child, index) => {
+                if (index === node.children!.length - 1) {
+                    result += this.formatTreeForHuman(child, prefix + '└── ');
+                } else {
+                    result += this.formatTreeForHuman(child, prefix + '├── ');
                 }
-                return a.isDirectory ? -1 : 1;
+                if (index < node.children!.length - 1) {
+                    result += '\n';
+                }
             });
-
-            for (let i = 0; i < sortedChildren.length; i++) {
-                const child = sortedChildren[i];
-                const isLast = i === sortedChildren.length - 1;
-                const newPrefix = prefix + (isLast ? '    ' : '│   ');
-                const childPrefix = prefix + (isLast ? '└── ' : '├── ');
-                result += this.formatTreeForHuman(child, childPrefix);
-            }
-        } else if (node.children === "skipped") {
-            const childPrefix = prefix + '└── ';
-            result += `${childPrefix}... (${node.children_skipped} items skipped)\n`;
         }
 
         return result;
     }
 
-    private static collectStats(node: TreeNode, depth: number = 0): any {
-        let stats = {
-            totalNodes: 1,
-            files: node.isDirectory ? 0 : 1,
-            directories: node.isDirectory ? 1 : 0,
-            maxDepth: depth,
-            extensions: {} as { [key: string]: number }
+    private buildMinimalTree(node: TreeNode): TreeNode {
+        if (!node.isDirectory) {
+            return {
+                name: node.name,
+                type: 'file',
+                isDirectory: false
+            };
+        }
+
+        if (node.children && Array.isArray(node.children) && node.children.length > 10) {
+            return {
+                name: node.name,
+                type: 'directory',
+                isDirectory: true,
+                children: 'skipped',
+                children_skipped: node.children.length
+            };
+        }
+
+        return {
+            name: node.name,
+            type: 'directory',
+            isDirectory: true,
+            children: node.children && Array.isArray(node.children) 
+                ? node.children.map(child => this.buildMinimalTree(child))
+                : undefined
+        };
+    }
+
+    private collectStats(node: TreeNode): { extensionStats: Record<string, number> } {
+        const extensionStats: Record<string, number> = {};
+
+        const processNode = (n: TreeNode) => {
+            if (!n.isDirectory) {
+                const ext = this.getFileExtension(n.name);
+                extensionStats[ext] = (extensionStats[ext] || 0) + 1;
+            }
+
+            if (n.children && Array.isArray(n.children)) {
+                n.children.forEach(processNode);
+            }
         };
 
-        if (!node.isDirectory && node.name.includes('.')) {
-            const ext = node.name.split('.').pop()!.toLowerCase();
-            // Собираем статистику только для важных расширений
-            if (this.IMPORTANT_EXTENSIONS.has(ext)) {
-                stats.extensions[ext] = (stats.extensions[ext] || 0) + 1;
+        processNode(node);
+        return { extensionStats };
+    }
+
+    private collectMetadata(node: TreeNode): TreeMetadata {
+        let totalNodes = 0;
+        let totalFiles = 0;
+        let totalDirectories = 0;
+        let maxDepth = 0;
+
+        const processNode = (n: TreeNode, depth: number) => {
+            totalNodes++;
+            if (n.isDirectory) {
+                totalDirectories++;
+            } else {
+                totalFiles++;
             }
+            maxDepth = Math.max(maxDepth, depth);
+
+            if (n.children && Array.isArray(n.children)) {
+                n.children.forEach(child => processNode(child, depth + 1));
+            }
+        };
+
+        processNode(node, 0);
+
+        return {
+            total_nodes: totalNodes,
+            total_files: totalFiles,
+            total_directories: totalDirectories,
+            max_depth: maxDepth,
+            root: node.name,
+            show_size: this.options.showSize || false
+        };
+    }
+
+    private buildRelationships(node: TreeNode): Array<{from: string; to: string}> {
+        const relationships: Array<{from: string; to: string}> = [];
+
+        const processNode = (n: TreeNode, parent?: string) => {
+            if (parent) {
+                relationships.push({ from: parent, to: n.name });
+            }
+
+            if (n.children && Array.isArray(n.children)) {
+                n.children.forEach(child => processNode(child, n.name));
+            }
+        };
+
+        processNode(node);
+        return relationships;
+    }
+
+    private getFileExtension(filename: string): string {
+        const ext = filename.split('.').pop();
+        return ext ? `.${ext}` : 'no-extension';
+    }
+
+    private formatSize(size: number): string {
+        const units = ['B', 'KB', 'MB', 'GB'];
+        let unitIndex = 0;
+        let value = size;
+
+        while (value >= 1024 && unitIndex < units.length - 1) {
+            value /= 1024;
+            unitIndex++;
         }
 
-        if (node.children && typeof node.children !== 'string') {
-            node.children.forEach(chil
+        return `${Math.round(value * 100) / 100} ${units[unitIndex]}`;
+    }
+} 

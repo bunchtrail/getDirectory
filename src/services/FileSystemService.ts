@@ -1,74 +1,97 @@
 import * as fs from 'fs';
-import { minimatch } from 'minimatch';
 import * as path from 'path';
-import { ITreeGenerator, TreeNode, TreeOptions } from '../domain/interfaces/ITreeGenerator';
+import { TreeNode } from '../types';
 
-export class FileSystemTreeGenerator implements ITreeGenerator {
-    private readonly DEFAULT_MAX_CHILDREN = 50;
-    private readonly DEFAULT_MAX_DEPTH = 5;
+export class FileSystemService {
+    constructor(private workspaceRoot: string) {}
 
-    generateTree(rootPath: string, options: TreeOptions): TreeNode {
-        return this.generateTreeNode(rootPath, options, 0);
-    }
+    public async buildDirectoryTree(dirPath: string): Promise<TreeNode> {
+        const relativePath = path.relative(this.workspaceRoot, dirPath);
+        const stats = await fs.promises.stat(dirPath);
 
-    private shouldExclude(childPath: string, childName: string, options: TreeOptions): boolean {
-        const relativePath = path.relative(process.cwd(), childPath);
-        
-        return options.excludePatterns.some(pattern => {
-            if (childName === pattern || childName.toLowerCase() === pattern.toLowerCase()) {
-                return true;
-            }
-            
-            if (pattern.includes('*')) {
-                return minimatch(relativePath, pattern, { dot: true, matchBase: true }) ||
-                       minimatch(childName, pattern, { dot: true, matchBase: true });
-            }
-            
-            if (pattern.includes('**')) {
-                return minimatch(relativePath, pattern, { dot: true });
-            }
-            
-            return false;
-        });
-    }
-
-    private shouldCollapse(currentDepth: number, childrenCount: number, options: TreeOptions): boolean {
-        if (!options.aiMinimalMode) {
-            return false;
+        if (!stats.isDirectory()) {
+            return {
+                name: path.basename(dirPath),
+                type: 'file',
+                isDirectory: false,
+                size: stats.size
+            };
         }
 
-        const maxDepth = options.maxDepthBeforeCollapse ?? this.DEFAULT_MAX_DEPTH;
-        const maxChildren = options.maxChildrenCount ?? this.DEFAULT_MAX_CHILDREN;
+        const entries = await fs.promises.readdir(dirPath);
+        const children = await Promise.all(
+            entries
+                .filter(entry => !entry.startsWith('.')) // Игнорируем скрытые файлы
+                .map(async entry => {
+                    const fullPath = path.join(dirPath, entry);
+                    try {
+                        return await this.buildDirectoryTree(fullPath);
+                    } catch (error) {
+                        console.error(`Error processing ${fullPath}:`, error);
+                        return null;
+                    }
+                })
+        );
 
-        return currentDepth > maxDepth || childrenCount > maxChildren;
+        return {
+            name: path.basename(dirPath),
+            type: 'directory',
+            isDirectory: true,
+            children: children.filter((child): child is TreeNode => child !== null)
+        };
     }
 
-    private generateTreeNode(nodePath: string, options: TreeOptions, currentDepth: number): TreeNode {
-        const stats = fs.statSync(nodePath);
-        const name = path.basename(nodePath);
+    public async getWorkspaceStats(): Promise<{
+        totalSize: number;
+        fileCount: number;
+        dirCount: number;
+    }> {
+        let totalSize = 0;
+        let fileCount = 0;
+        let dirCount = 0;
 
-        // Базовый узел
-        const node: TreeNode = {
-            name,
-            path: nodePath,
-            isDirectory: stats.isDirectory(),
-            size: options.showSize ? stats.size : undefined
+        const processDirectory = async (dirPath: string) => {
+            const entries = await fs.promises.readdir(dirPath);
+
+            for (const entry of entries) {
+                if (entry.startsWith('.')) continue;
+
+                const fullPath = path.join(dirPath, entry);
+                const stats = await fs.promises.stat(fullPath);
+
+                if (stats.isDirectory()) {
+                    dirCount++;
+                    await processDirectory(fullPath);
+                } else {
+                    fileCount++;
+                    totalSize += stats.size;
+                }
+            }
         };
 
-        // Проверяем максимальную глубину из опций
-        if (options.maxDepth !== -1 && currentDepth > options.maxDepth) {
-            return node;
+        await processDirectory(this.workspaceRoot);
+
+        return {
+            totalSize,
+            fileCount,
+            dirCount
+        };
+    }
+
+    public isDirectory(path: string): boolean {
+        try {
+            return fs.statSync(path).isDirectory();
+        } catch {
+            return false;
         }
+    }
 
-        if (stats.isDirectory()) {
-            try {
-                const allChildren = fs.readdirSync(nodePath);
-                const filteredChildren = allChildren.filter(child => {
-                    const childPath = path.join(nodePath, child);
-                    
-                    if (!options.showFiles && !fs.statSync(childPath).isDirectory()) {
-                        return false;
-                    }
-
-                    return !this.shouldExclude(childPath, child, options);
-  
+    public exists(path: string): boolean {
+        try {
+            fs.accessSync(path);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+} 

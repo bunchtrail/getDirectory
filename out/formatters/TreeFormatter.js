@@ -1,119 +1,153 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TreeFormatter = void 0;
-const vscode = __importStar(require("vscode"));
 class TreeFormatter {
-    static formatTreeForAI(node) {
-        const config = vscode.workspace.getConfiguration('directoryTree');
-        const showSize = config.get('showSize') || false;
-        const aiMinimalMode = config.get('aiMinimalMode') || false;
-        // Собираем статистику
-        const stats = this.collectStats(node);
-        if (aiMinimalMode) {
-            // Минимальный режим для AI
-            const result = {
-                meta: {
-                    nodes: stats.totalNodes,
-                    files: stats.files,
-                    dirs: stats.directories,
-                    root: node.name
-                },
-                tree: this.buildMinimalTree(node)
-            };
-            return JSON.stringify(result, null, 2);
-        }
-        // Полный режим
-        const { nodes, relationships } = this.flattenTree(node);
-        const result = {
-            metadata: {
-                total_nodes: stats.totalNodes,
-                total_files: stats.files,
-                total_directories: stats.directories,
-                max_depth: stats.maxDepth,
-                root: node.name,
-                show_size: showSize
-            },
-            extension_stats: stats.extensions,
-            nodes: nodes,
-            relationships: relationships
+    constructor(options = {}) {
+        this.options = {
+            showSize: false,
+            aiMinimalMode: false,
+            importantExtensions: ['.ts', '.js', '.json'],
+            ...options
         };
-        return JSON.stringify(result, null, 2);
     }
-    static buildMinimalTree(node) {
-        // Базовый объект
-        const result = {
-            name: node.name,
-            type: node.isDirectory ? "directory" : "file"
-        };
-        // Для схлопнутых директорий
-        if (node.isPlaceholder) {
-            if (node.children_skipped) {
-                result.children_skipped = node.children_skipped;
-                result.children = "skipped";
-            }
-            else {
-                result.children = [{
-                        name: "...",
-                        type: "directory",
-                        children: []
-                    }];
-            }
-            return result;
+    formatTreeForAI(node) {
+        if (this.options.aiMinimalMode) {
+            return {
+                metadata: this.collectMetadata(node),
+                extension_stats: {},
+                nodes: [this.buildMinimalTree(node)],
+                relationships: []
+            };
         }
-        // Добавляем дочерние элементы только для директорий с содержимым
-        if (node.children && typeof node.children !== 'string' && node.children.length > 0) {
-            result.children = node.children.map(child => this.buildMinimalTree(child));
+        const stats = this.collectStats(node);
+        return {
+            metadata: this.collectMetadata(node),
+            extension_stats: stats.extensionStats,
+            nodes: [node],
+            relationships: this.buildRelationships(node)
+        };
+    }
+    formatTreeForHuman(node, prefix = '') {
+        if (node.isPlaceholder) {
+            return `${prefix}... (${node.children_skipped} items skipped)`;
+        }
+        const icon = node.isDirectory ? '📁' : '📄';
+        let result = `${prefix}${icon} ${node.name}`;
+        if (this.options.showSize && !node.isDirectory && node.size !== undefined) {
+            result += ` (${this.formatSize(node.size)})`;
+        }
+        if (node.children && Array.isArray(node.children)) {
+            result += '\n';
+            const childPrefix = prefix + '│   ';
+            node.children.forEach((child, index) => {
+                if (index === node.children.length - 1) {
+                    result += this.formatTreeForHuman(child, prefix + '└── ');
+                }
+                else {
+                    result += this.formatTreeForHuman(child, prefix + '├── ');
+                }
+                if (index < node.children.length - 1) {
+                    result += '\n';
+                }
+            });
         }
         return result;
     }
-    static formatTreeForHuman(node, prefix = '') {
-        const config = vscode.workspace.getConfiguration('directoryTree');
-        const showSize = config.get('showSize') || false;
-        let result = '';
-        const icon = node.isDirectory ? '📁' : '📄';
-        const name = node.name;
-        const size = showSize && node.size ? ` (${this.formatSize(node.size)})` : '';
-        // Добавляем текущий узел
-        result += `${prefix}${icon} ${name}${size}\n`;
-        // Обрабатываем дочерние элементы
-        if (node.children && typeof node.children !== 'string' && node.children.length > 0) {
-            // Сортируем: сначала директории, потом файлы
-            const sortedChildren = [...node.children].sort((a, b) => {
-                if (a.isDirectory === b.isDirectory) {
-                    return a.name.localeCompare(b.name);
-                }
-                return a.isDirectory ? -1 : 1;
-            });
-            for (let i = 0; i < sortedChildren.length; i++) {
-                const child = sortedChildren[i];
-                const isLast = i === sortedChildren.length - 1;
-                const newPrefix = prefix + (isLast ? '    ' : '│   ');
-                const childPrefix = prefix + (isLast ? '└── ' : '├── ');
-                result += this.formatTreeForHuman(child, childPrefix);
-            }
+    buildMinimalTree(node) {
+        if (!node.isDirectory) {
+            return {
+                name: node.name,
+                type: 'file',
+                isDirectory: false
+            };
         }
-        else if (node.children === "skipped") {
-            const childPrefix = prefix + '�
+        if (node.children && Array.isArray(node.children) && node.children.length > 10) {
+            return {
+                name: node.name,
+                type: 'directory',
+                isDirectory: true,
+                children: 'skipped',
+                children_skipped: node.children.length
+            };
+        }
+        return {
+            name: node.name,
+            type: 'directory',
+            isDirectory: true,
+            children: node.children && Array.isArray(node.children)
+                ? node.children.map(child => this.buildMinimalTree(child))
+                : undefined
+        };
+    }
+    collectStats(node) {
+        const extensionStats = {};
+        const processNode = (n) => {
+            if (!n.isDirectory) {
+                const ext = this.getFileExtension(n.name);
+                extensionStats[ext] = (extensionStats[ext] || 0) + 1;
+            }
+            if (n.children && Array.isArray(n.children)) {
+                n.children.forEach(processNode);
+            }
+        };
+        processNode(node);
+        return { extensionStats };
+    }
+    collectMetadata(node) {
+        let totalNodes = 0;
+        let totalFiles = 0;
+        let totalDirectories = 0;
+        let maxDepth = 0;
+        const processNode = (n, depth) => {
+            totalNodes++;
+            if (n.isDirectory) {
+                totalDirectories++;
+            }
+            else {
+                totalFiles++;
+            }
+            maxDepth = Math.max(maxDepth, depth);
+            if (n.children && Array.isArray(n.children)) {
+                n.children.forEach(child => processNode(child, depth + 1));
+            }
+        };
+        processNode(node, 0);
+        return {
+            total_nodes: totalNodes,
+            total_files: totalFiles,
+            total_directories: totalDirectories,
+            max_depth: maxDepth,
+            root: node.name,
+            show_size: this.options.showSize || false
+        };
+    }
+    buildRelationships(node) {
+        const relationships = [];
+        const processNode = (n, parent) => {
+            if (parent) {
+                relationships.push({ from: parent, to: n.name });
+            }
+            if (n.children && Array.isArray(n.children)) {
+                n.children.forEach(child => processNode(child, n.name));
+            }
+        };
+        processNode(node);
+        return relationships;
+    }
+    getFileExtension(filename) {
+        const ext = filename.split('.').pop();
+        return ext ? `.${ext}` : 'no-extension';
+    }
+    formatSize(size) {
+        const units = ['B', 'KB', 'MB', 'GB'];
+        let unitIndex = 0;
+        let value = size;
+        while (value >= 1024 && unitIndex < units.length - 1) {
+            value /= 1024;
+            unitIndex++;
+        }
+        return `${Math.round(value * 100) / 100} ${units[unitIndex]}`;
+    }
+}
+exports.TreeFormatter = TreeFormatter;
+//# sourceMappingURL=TreeFormatter.js.map
